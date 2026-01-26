@@ -322,7 +322,6 @@ describe("SettingsView Codex overrides", () => {
 
     await waitFor(() => {
       expect(onUpdateWorkspaceSettings).toHaveBeenCalledWith("w1", {
-        ...workspace.settings,
         codexArgs: "--profile dev",
       });
     });

@@ -144,7 +144,7 @@ export type SettingsViewProps = {
   onUpdateWorkspaceCodexBin: (id: string, codexBin: string | null) => Promise<void>;
   onUpdateWorkspaceSettings: (
     id: string,
-    settings: WorkspaceSettings,
+    settings: Partial<WorkspaceSettings>,
   ) => Promise<void>;
   scaleShortcutTitle: string;
   scaleShortcutText: string;
@@ -2328,7 +2328,6 @@ export function SettingsView({
                                   return;
                                 }
                                 await onUpdateWorkspaceSettings(workspace.id, {
-                                  ...workspace.settings,
                                   codexHome: nextValue,
                                 });
                               }}
@@ -2343,7 +2342,6 @@ export function SettingsView({
                                   [workspace.id]: "",
                                 }));
                                 await onUpdateWorkspaceSettings(workspace.id, {
-                                  ...workspace.settings,
                                   codexHome: null,
                                 });
                               }}
@@ -2369,7 +2367,6 @@ export function SettingsView({
                                   return;
                                 }
                                 await onUpdateWorkspaceSettings(workspace.id, {
-                                  ...workspace.settings,
                                   codexArgs: nextValue,
                                 });
                               }}
@@ -2384,7 +2381,6 @@ export function SettingsView({
                                   [workspace.id]: "",
                                 }));
                                 await onUpdateWorkspaceSettings(workspace.id, {
-                                  ...workspace.settings,
                                   codexArgs: null,
                                 });
                               }}

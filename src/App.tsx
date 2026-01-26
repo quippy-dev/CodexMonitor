@@ -473,7 +473,6 @@ function MainApp() {
         return;
       }
       await updateWorkspaceSettings(activeWorkspace.id, {
-        ...activeWorkspace.settings,
         gitRoot: path,
       });
       clearGitRootCandidates();
@@ -1271,7 +1270,6 @@ function MainApp() {
     await Promise.all(
       next.map((entry, idx) =>
         updateWorkspaceSettings(entry.id, {
-          ...entry.settings,
           sortOrder: idx
         })
       )
@@ -1421,7 +1419,6 @@ function MainApp() {
         return;
       }
       void updateWorkspaceSettings(workspaceId, {
-        ...target.settings,
         sidebarCollapsed: collapsed,
       });
     },

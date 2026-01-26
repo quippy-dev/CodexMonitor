@@ -387,26 +387,31 @@ export function useWorkspaces(options: UseWorkspacesOptions = {}) {
   }
 
   const updateWorkspaceSettings = useCallback(
-    async (workspaceId: string, settings: WorkspaceSettings) => {
+    async (workspaceId: string, patch: Partial<WorkspaceSettings>) => {
       onDebug?.({
         id: `${Date.now()}-client-update-workspace-settings`,
         timestamp: Date.now(),
         source: "client",
         label: "workspace/settings",
-        payload: { workspaceId, settings },
+        payload: { workspaceId, patch },
       });
       let previous: WorkspaceInfo | null = null;
+      let nextSettings: WorkspaceSettings | null = null;
       setWorkspaces((prev) =>
         prev.map((entry) => {
           if (entry.id !== workspaceId) {
             return entry;
           }
           previous = entry;
-          return { ...entry, settings };
+          nextSettings = { ...entry.settings, ...patch };
+          return { ...entry, settings: nextSettings };
         }),
       );
+      if (!nextSettings) {
+        throw new Error("workspace not found");
+      }
       try {
-        const updated = await updateWorkspaceSettingsService(workspaceId, settings);
+        const updated = await updateWorkspaceSettingsService(workspaceId, nextSettings);
         setWorkspaces((prev) =>
           prev.map((entry) => (entry.id === workspaceId ? updated : entry)),
         );
@@ -592,7 +597,6 @@ export function useWorkspaces(options: UseWorkspacesOptions = {}) {
       await Promise.all([
         ...workspacesToUpdate.map((workspace) =>
           updateWorkspaceSettings(workspace.id, {
-            ...workspace.settings,
             groupId: null,
           }),
         ),
@@ -618,7 +622,6 @@ export function useWorkspaces(options: UseWorkspacesOptions = {}) {
       const resolvedGroupId =
         groupId && workspaceGroupById.has(groupId) ? groupId : null;
       await updateWorkspaceSettings(target.id, {
-        ...target.settings,
         groupId: resolvedGroupId,
       });
       return true;
