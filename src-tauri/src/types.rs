@@ -287,6 +287,8 @@ pub(crate) struct OpenAppTarget {
 pub(crate) struct AppSettings {
     #[serde(default, rename = "codexBin")]
     pub(crate) codex_bin: Option<String>,
+    #[serde(default, rename = "codexArgs")]
+    pub(crate) codex_args: Option<String>,
     #[serde(default, rename = "backendMode")]
     pub(crate) backend_mode: BackendMode,
     #[serde(default = "default_remote_backend_host", rename = "remoteBackendHost")]
@@ -684,6 +686,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             codex_bin: None,
+            codex_args: None,
             backend_mode: BackendMode::Local,
             remote_backend_host: default_remote_backend_host(),
             remote_backend_token: None,

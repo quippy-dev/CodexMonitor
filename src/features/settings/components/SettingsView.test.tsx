@@ -319,6 +319,7 @@ describe("SettingsView Codex overrides", () => {
         reduceTransparency={false}
         onToggleTransparency={vi.fn()}
         appSettings={baseSettings}
+        openAppIconById={{}}
         onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
         onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
         onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
