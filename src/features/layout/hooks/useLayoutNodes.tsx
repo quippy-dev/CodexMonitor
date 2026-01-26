@@ -35,6 +35,7 @@ import type {
   GitLogEntry,
   LocalUsageSnapshot,
   ModelOption,
+  OpenAppTarget,
   QueuedMessage,
   RateLimitSnapshot,
   RequestUserInputRequest,
@@ -107,6 +108,10 @@ type LayoutNodesOptions = {
   activeItems: ConversationItem[];
   activeRateLimits: RateLimitSnapshot | null;
   codeBlockCopyUseModifier: boolean;
+  openAppTargets: OpenAppTarget[];
+  openAppIconById: Record<string, string>;
+  selectedOpenAppId: string;
+  onSelectOpenAppId: (id: string) => void;
   approvals: ApprovalRequest[];
   userInputRequests: RequestUserInputRequest[];
   handleApprovalDecision: (
@@ -453,6 +458,8 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       threadId={options.activeThreadId ?? null}
       workspaceId={options.activeWorkspace?.id ?? null}
       workspacePath={options.activeWorkspace?.path ?? null}
+      openTargets={options.openAppTargets}
+      selectedOpenAppId={options.selectedOpenAppId}
       codeBlockCopyUseModifier={options.codeBlockCopyUseModifier}
       userInputRequests={options.userInputRequests}
       onUserInputSubmit={options.handleUserInputSubmit}
@@ -570,6 +577,10 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       disableBranchMenu={options.isWorktreeWorkspace}
       parentPath={options.activeParentWorkspace?.path ?? null}
       worktreePath={options.isWorktreeWorkspace ? options.activeWorkspace.path : null}
+      openTargets={options.openAppTargets}
+      openAppIconById={options.openAppIconById}
+      selectedOpenAppId={options.selectedOpenAppId}
+      onSelectOpenAppId={options.onSelectOpenAppId}
       branchName={options.branchName}
       branches={options.branches}
       onCheckoutBranch={options.onCheckoutBranch}
@@ -620,6 +631,10 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         filePanelMode={options.filePanelMode}
         onFilePanelModeChange={options.onFilePanelModeChange}
         onInsertText={options.onInsertComposerText}
+        openTargets={options.openAppTargets}
+        openAppIconById={options.openAppIconById}
+        selectedOpenAppId={options.selectedOpenAppId}
+        onSelectOpenAppId={options.onSelectOpenAppId}
       />
     );
   } else if (options.filePanelMode === "prompts") {
