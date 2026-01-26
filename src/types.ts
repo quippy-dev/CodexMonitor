@@ -4,6 +4,7 @@ export type WorkspaceSettings = {
   groupId?: string | null;
   gitRoot?: string | null;
   codexHome?: string | null;
+  codexArgs?: string | null;
 };
 
 export type WorkspaceGroup = {

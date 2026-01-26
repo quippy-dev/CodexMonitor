@@ -13,6 +13,7 @@ use tokio::process::Command;
 use uuid::Uuid;
 
 use crate::codex::spawn_workspace_session;
+use crate::codex_args::resolve_workspace_codex_args;
 use crate::codex_home::resolve_workspace_codex_home;
 use crate::remote_backend;
 use crate::state::AppState;
@@ -550,7 +551,10 @@ pub(crate) async fn add_workspace(
 
     let (default_bin, codex_args) = {
         let settings = state.app_settings.lock().await;
-        (settings.codex_bin.clone(), settings.codex_args.clone())
+        (
+            settings.codex_bin.clone(),
+            resolve_workspace_codex_args(&entry, None, Some(&settings)),
+        )
     };
     let codex_home = resolve_workspace_codex_home(&entry, None);
     let session =
@@ -669,7 +673,10 @@ pub(crate) async fn add_clone(
 
     let (default_bin, codex_args) = {
         let settings = state.app_settings.lock().await;
-        (settings.codex_bin.clone(), settings.codex_args.clone())
+        (
+            settings.codex_bin.clone(),
+            resolve_workspace_codex_args(&entry, None, Some(&settings)),
+        )
     };
     let codex_home = resolve_workspace_codex_home(&entry, None);
     let session = match spawn_workspace_session(
@@ -801,7 +808,10 @@ pub(crate) async fn add_worktree(
 
     let (default_bin, codex_args) = {
         let settings = state.app_settings.lock().await;
-        (settings.codex_bin.clone(), settings.codex_args.clone())
+        (
+            settings.codex_bin.clone(),
+            resolve_workspace_codex_args(&entry, Some(&parent_entry), Some(&settings)),
+        )
     };
     let codex_home = resolve_workspace_codex_home(&entry, Some(&parent_entry));
     let session =
@@ -1100,7 +1110,10 @@ pub(crate) async fn rename_worktree(
         }
         let (default_bin, codex_args) = {
             let settings = state.app_settings.lock().await;
-            (settings.codex_bin.clone(), settings.codex_args.clone())
+            (
+                settings.codex_bin.clone(),
+                resolve_workspace_codex_args(&entry_snapshot, Some(&parent), Some(&settings)),
+            )
         };
         let codex_home = resolve_workspace_codex_home(&entry_snapshot, Some(&parent));
         match spawn_workspace_session(
@@ -1389,29 +1402,40 @@ pub(crate) async fn update_workspace_settings(
         return serde_json::from_value(response).map_err(|err| err.to_string());
     }
 
-    let (previous_entry, entry_snapshot, parent_entry, previous_codex_home) = {
+    let (previous_entry, entry_snapshot, parent_entry, previous_codex_home, previous_codex_args) = {
         let mut workspaces = state.workspaces.lock().await;
         let previous_entry = workspaces
             .get(&id)
             .cloned()
             .ok_or_else(|| "workspace not found".to_string())?;
         let previous_codex_home = previous_entry.settings.codex_home.clone();
+        let previous_codex_args = previous_entry.settings.codex_args.clone();
         let entry_snapshot = apply_workspace_settings_update(&mut workspaces, &id, settings)?;
         let parent_entry = entry_snapshot
             .parent_id
             .as_ref()
             .and_then(|parent_id| workspaces.get(parent_id))
             .cloned();
-        (previous_entry, entry_snapshot, parent_entry, previous_codex_home)
+        (
+            previous_entry,
+            entry_snapshot,
+            parent_entry,
+            previous_codex_home,
+            previous_codex_args,
+        )
     };
 
     let codex_home_changed = previous_codex_home != entry_snapshot.settings.codex_home;
+    let codex_args_changed = previous_codex_args != entry_snapshot.settings.codex_args;
     let connected = state.sessions.lock().await.contains_key(&id);
-    if connected && codex_home_changed {
+    if connected && (codex_home_changed || codex_args_changed) {
         let rollback_entry = previous_entry.clone();
         let (default_bin, codex_args) = {
             let settings = state.app_settings.lock().await;
-            (settings.codex_bin.clone(), settings.codex_args.clone())
+            (
+                settings.codex_bin.clone(),
+                resolve_workspace_codex_args(&entry_snapshot, parent_entry.as_ref(), Some(&settings)),
+            )
         };
         let codex_home = resolve_workspace_codex_home(&entry_snapshot, parent_entry.as_ref());
         let new_session = match spawn_workspace_session(
@@ -1535,7 +1559,10 @@ pub(crate) async fn connect_workspace(
 
     let (default_bin, codex_args) = {
         let settings = state.app_settings.lock().await;
-        (settings.codex_bin.clone(), settings.codex_args.clone())
+        (
+            settings.codex_bin.clone(),
+            resolve_workspace_codex_args(&entry, parent_entry.as_ref(), Some(&settings)),
+        )
     };
     let codex_home = resolve_workspace_codex_home(&entry, parent_entry.as_ref());
     let session =
@@ -1635,6 +1662,7 @@ mod tests {
                 group_id: None,
                 git_root: None,
                 codex_home: None,
+                codex_args: None,
             },
         }
     }

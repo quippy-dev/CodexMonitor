@@ -240,6 +240,8 @@ pub(crate) struct WorkspaceSettings {
     pub(crate) git_root: Option<String>,
     #[serde(default, rename = "codexHome")]
     pub(crate) codex_home: Option<String>,
+    #[serde(default, rename = "codexArgs")]
+    pub(crate) codex_args: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -738,6 +740,7 @@ mod tests {
         assert!(entry.worktree.is_none());
         assert!(entry.settings.sort_order.is_none());
         assert!(entry.settings.group_id.is_none());
+        assert!(entry.settings.codex_args.is_none());
     }
 
     #[test]
@@ -747,5 +750,6 @@ mod tests {
         assert!(settings.sort_order.is_none());
         assert!(settings.group_id.is_none());
         assert!(settings.git_root.is_none());
+        assert!(settings.codex_args.is_none());
     }
 }

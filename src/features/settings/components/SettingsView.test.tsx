@@ -9,7 +9,7 @@ import {
 } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { AppSettings } from "../../../types";
+import type { AppSettings, WorkspaceInfo } from "../../../types";
 import { SettingsView } from "./SettingsView";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -263,6 +263,67 @@ describe("SettingsView Display", () => {
       expect(onUpdateAppSettings).toHaveBeenCalledWith(
         expect.objectContaining({ notificationSoundsEnabled: true }),
       );
+    });
+  });
+});
+
+describe("SettingsView Codex overrides", () => {
+  it("updates workspace Codex args override on blur", async () => {
+    const onUpdateWorkspaceSettings = vi.fn().mockResolvedValue(undefined);
+    const workspace: WorkspaceInfo = {
+      id: "w1",
+      name: "Workspace",
+      path: "/tmp/workspace",
+      connected: false,
+      codex_bin: null,
+      kind: "main",
+      parentId: null,
+      worktree: null,
+      settings: { sidebarCollapsed: false, codexArgs: null },
+    };
+
+    render(
+      <SettingsView
+        workspaceGroups={[]}
+        groupedWorkspaces={[
+          { id: null, name: "Ungrouped", workspaces: [workspace] },
+        ]}
+        ungroupedLabel="Ungrouped"
+        onClose={vi.fn()}
+        onMoveWorkspace={vi.fn()}
+        onDeleteWorkspace={vi.fn()}
+        onCreateWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onRenameWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onMoveWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onDeleteWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onAssignWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        reduceTransparency={false}
+        onToggleTransparency={vi.fn()}
+        appSettings={baseSettings}
+        onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
+        onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
+        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
+        onUpdateWorkspaceSettings={onUpdateWorkspaceSettings}
+        scaleShortcutTitle="Scale shortcut"
+        scaleShortcutText="Use Command +/-"
+        onTestNotificationSound={vi.fn()}
+        dictationModelStatus={null}
+        onDownloadDictationModel={vi.fn()}
+        onCancelDictationDownload={vi.fn()}
+        onRemoveDictationModel={vi.fn()}
+        initialSection="codex"
+      />,
+    );
+
+    const input = screen.getByLabelText("Codex args override for Workspace");
+    fireEvent.change(input, { target: { value: "--profile dev" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(onUpdateWorkspaceSettings).toHaveBeenCalledWith("w1", {
+        ...workspace.settings,
+        codexArgs: "--profile dev",
+      });
     });
   });
 });
