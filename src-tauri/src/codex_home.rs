@@ -8,14 +8,16 @@ pub(crate) fn resolve_workspace_codex_home(
     parent_entry: Option<&WorkspaceEntry>,
 ) -> Option<PathBuf> {
     if let Some(value) = entry.settings.codex_home.as_ref() {
-        if let Some(path) = normalize_codex_home(value) {
+        let base = PathBuf::from(&entry.path);
+        if let Some(path) = normalize_codex_home_with_base(value, &base) {
             return Some(path);
         }
     }
     if entry.kind.is_worktree() {
         if let Some(parent) = parent_entry {
             if let Some(value) = parent.settings.codex_home.as_ref() {
-                if let Some(path) = normalize_codex_home(value) {
+                let base = PathBuf::from(&parent.path);
+                if let Some(path) = normalize_codex_home_with_base(value, &base) {
                     return Some(path);
                 }
             }
@@ -57,6 +59,15 @@ fn normalize_codex_home(value: &str) -> Option<PathBuf> {
         return Some(path);
     }
     Some(PathBuf::from(trimmed))
+}
+
+fn normalize_codex_home_with_base(value: &str, base: &PathBuf) -> Option<PathBuf> {
+    let path = normalize_codex_home(value)?;
+    if path.is_absolute() {
+        Some(path)
+    } else {
+        Some(base.join(path))
+    }
 }
 
 fn expand_tilde(value: &str) -> Option<PathBuf> {
@@ -216,6 +227,25 @@ mod tests {
         let resolved = resolve_workspace_codex_home(&child, Some(&parent));
 
         assert_eq!(resolved, Some(PathBuf::from("/tmp/codex-parent")));
+    }
+
+    #[test]
+    fn workspace_codex_home_relative_resolves_against_workspace_path() {
+        let entry = workspace_entry(WorkspaceKind::Main, "/repo", Some(".codex"));
+
+        let resolved = resolve_workspace_codex_home(&entry, None);
+
+        assert_eq!(resolved, Some(PathBuf::from("/repo/.codex")));
+    }
+
+    #[test]
+    fn worktree_relative_override_uses_parent_path() {
+        let parent = workspace_entry(WorkspaceKind::Main, "/repo", Some(".codex"));
+        let child = workspace_entry(WorkspaceKind::Worktree, "/repo/worktree", None);
+
+        let resolved = resolve_workspace_codex_home(&child, Some(&parent));
+
+        assert_eq!(resolved, Some(PathBuf::from("/repo/.codex")));
     }
 
     #[test]
