@@ -162,6 +162,7 @@ type ShortcutSettingKey =
   | "composerModelShortcut"
   | "composerAccessShortcut"
   | "composerReasoningShortcut"
+  | "composerCollaborationShortcut"
   | "newAgentShortcut"
   | "newWorktreeAgentShortcut"
   | "newCloneAgentShortcut"
@@ -177,6 +178,7 @@ type ShortcutDraftKey =
   | "model"
   | "access"
   | "reasoning"
+  | "collaboration"
   | "newAgent"
   | "newWorktreeAgent"
   | "newCloneAgent"
@@ -193,6 +195,7 @@ const shortcutDraftKeyBySetting: Record<ShortcutSettingKey, ShortcutDraftKey> = 
   composerModelShortcut: "model",
   composerAccessShortcut: "access",
   composerReasoningShortcut: "reasoning",
+  composerCollaborationShortcut: "collaboration",
   newAgentShortcut: "newAgent",
   newWorktreeAgentShortcut: "newWorktreeAgent",
   newCloneAgentShortcut: "newCloneAgent",
@@ -267,6 +270,7 @@ export function SettingsView({
     model: appSettings.composerModelShortcut ?? "",
     access: appSettings.composerAccessShortcut ?? "",
     reasoning: appSettings.composerReasoningShortcut ?? "",
+    collaboration: appSettings.composerCollaborationShortcut ?? "",
     newAgent: appSettings.newAgentShortcut ?? "",
     newWorktreeAgent: appSettings.newWorktreeAgentShortcut ?? "",
     newCloneAgent: appSettings.newCloneAgentShortcut ?? "",
@@ -362,6 +366,7 @@ export function SettingsView({
       model: appSettings.composerModelShortcut ?? "",
       access: appSettings.composerAccessShortcut ?? "",
       reasoning: appSettings.composerReasoningShortcut ?? "",
+      collaboration: appSettings.composerCollaborationShortcut ?? "",
       newAgent: appSettings.newAgentShortcut ?? "",
       newWorktreeAgent: appSettings.newWorktreeAgentShortcut ?? "",
       newCloneAgent: appSettings.newCloneAgentShortcut ?? "",
@@ -378,6 +383,7 @@ export function SettingsView({
     appSettings.composerAccessShortcut,
     appSettings.composerModelShortcut,
     appSettings.composerReasoningShortcut,
+    appSettings.composerCollaborationShortcut,
     appSettings.newAgentShortcut,
     appSettings.newWorktreeAgentShortcut,
     appSettings.newCloneAgentShortcut,
@@ -618,7 +624,10 @@ export function SettingsView({
     event: React.KeyboardEvent<HTMLInputElement>,
     key: ShortcutSettingKey,
   ) => {
-    if (event.key === "Tab") {
+    if (event.key === "Tab" && key !== "composerCollaborationShortcut") {
+      return;
+    }
+    if (event.key === "Tab" && !event.shiftKey) {
       return;
     }
     event.preventDefault();
@@ -1753,7 +1762,7 @@ export function SettingsView({
                 <div className="settings-divider" />
                 <div className="settings-subsection-title">Composer</div>
                 <div className="settings-subsection-subtitle">
-                  Cycle between model, access, and reasoning modes.
+                  Cycle between model, access, reasoning, and collaboration modes.
                 </div>
                 <div className="settings-field">
                   <div className="settings-field-label">Cycle model</div>
@@ -1825,6 +1834,30 @@ export function SettingsView({
                   </div>
                   <div className="settings-help">
                     Default: {formatShortcut("cmd+shift+r")}
+                  </div>
+                </div>
+                <div className="settings-field">
+                  <div className="settings-field-label">Cycle collaboration mode</div>
+                  <div className="settings-field-row">
+                    <input
+                      className="settings-input settings-input--shortcut"
+                      value={formatShortcut(shortcutDrafts.collaboration)}
+                      onKeyDown={(event) =>
+                        handleShortcutKeyDown(event, "composerCollaborationShortcut")
+                      }
+                      placeholder="Type shortcut"
+                      readOnly
+                    />
+                    <button
+                      type="button"
+                      className="ghost settings-button-compact"
+                      onClick={() => void updateShortcut("composerCollaborationShortcut", null)}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div className="settings-help">
+                    Default: {formatShortcut("shift+tab")}
                   </div>
                 </div>
                 <div className="settings-divider" />
