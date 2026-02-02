@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import type { Dispatch, MutableRefObject } from "react";
-import type { AppServerEvent, DebugEntry } from "../../../types";
+import type { AppServerEvent, DebugEntry, TurnPlan } from "../../../types";
 import { useThreadApprovalEvents } from "./useThreadApprovalEvents";
 import { useThreadItemEvents } from "./useThreadItemEvents";
 import { useThreadTurnEvents } from "./useThreadTurnEvents";
@@ -10,7 +10,9 @@ import type { ThreadAction } from "./useThreadsReducer";
 type ThreadEventHandlersOptions = {
   activeThreadId: string | null;
   dispatch: Dispatch<ThreadAction>;
+  planByThreadRef: MutableRefObject<Record<string, TurnPlan | null>>;
   getCustomName: (workspaceId: string, threadId: string) => string | undefined;
+  isThreadHidden: (workspaceId: string, threadId: string) => boolean;
   markProcessing: (threadId: string, isProcessing: boolean) => void;
   markReviewing: (threadId: string, isReviewing: boolean) => void;
   setActiveTurnId: (threadId: string, turnId: string | null) => void;
@@ -27,6 +29,7 @@ type ThreadEventHandlersOptions = {
     threadId: string,
     item: Record<string, unknown>,
   ) => void;
+  onReviewExited?: (workspaceId: string, threadId: string) => void;
   approvalAllowlistRef: MutableRefObject<Record<string, string[][]>>;
   pendingInterruptsRef: MutableRefObject<Set<string>>;
 };
@@ -34,7 +37,9 @@ type ThreadEventHandlersOptions = {
 export function useThreadEventHandlers({
   activeThreadId,
   dispatch,
+  planByThreadRef,
   getCustomName,
+  isThreadHidden,
   markProcessing,
   markReviewing,
   setActiveTurnId,
@@ -44,6 +49,7 @@ export function useThreadEventHandlers({
   onDebug,
   onWorkspaceConnected,
   applyCollabThreadLinks,
+  onReviewExited,
   approvalAllowlistRef,
   pendingInterruptsRef,
 }: ThreadEventHandlersOptions) {
@@ -61,6 +67,7 @@ export function useThreadEventHandlers({
     onReasoningSummaryDelta,
     onReasoningSummaryBoundary,
     onReasoningTextDelta,
+    onPlanDelta,
     onCommandOutputDelta,
     onTerminalInteraction,
     onFileChangeOutputDelta,
@@ -73,10 +80,12 @@ export function useThreadEventHandlers({
     safeMessageActivity,
     recordThreadActivity,
     applyCollabThreadLinks,
+    onReviewExited,
   });
 
   const {
     onThreadStarted,
+    onThreadNameUpdated,
     onTurnStarted,
     onTurnCompleted,
     onTurnPlanUpdated,
@@ -86,7 +95,9 @@ export function useThreadEventHandlers({
     onContextCompacted,
   } = useThreadTurnEvents({
     dispatch,
+    planByThreadRef,
     getCustomName,
+    isThreadHidden,
     markProcessing,
     markReviewing,
     setActiveTurnId,
@@ -95,6 +106,16 @@ export function useThreadEventHandlers({
     safeMessageActivity,
     recordThreadActivity,
   });
+
+  const onBackgroundThreadAction = useCallback(
+    (workspaceId: string, threadId: string, action: string) => {
+      if (action !== "hide") {
+        return;
+      }
+      dispatch({ type: "hideThread", workspaceId, threadId });
+    },
+    [dispatch],
+  );
 
   const onAppServerEvent = useCallback(
     (event: AppServerEvent) => {
@@ -116,6 +137,7 @@ export function useThreadEventHandlers({
       onWorkspaceConnected,
       onApprovalRequest,
       onRequestUserInput,
+      onBackgroundThreadAction,
       onAppServerEvent,
       onAgentMessageDelta,
       onAgentMessageCompleted,
@@ -124,10 +146,12 @@ export function useThreadEventHandlers({
       onReasoningSummaryDelta,
       onReasoningSummaryBoundary,
       onReasoningTextDelta,
+      onPlanDelta,
       onCommandOutputDelta,
       onTerminalInteraction,
       onFileChangeOutputDelta,
       onThreadStarted,
+      onThreadNameUpdated,
       onTurnStarted,
       onTurnCompleted,
       onTurnPlanUpdated,
@@ -140,6 +164,7 @@ export function useThreadEventHandlers({
       onWorkspaceConnected,
       onApprovalRequest,
       onRequestUserInput,
+      onBackgroundThreadAction,
       onAppServerEvent,
       onAgentMessageDelta,
       onAgentMessageCompleted,
@@ -148,10 +173,12 @@ export function useThreadEventHandlers({
       onReasoningSummaryDelta,
       onReasoningSummaryBoundary,
       onReasoningTextDelta,
+      onPlanDelta,
       onCommandOutputDelta,
       onTerminalInteraction,
       onFileChangeOutputDelta,
       onThreadStarted,
+      onThreadNameUpdated,
       onTurnStarted,
       onTurnCompleted,
       onTurnPlanUpdated,

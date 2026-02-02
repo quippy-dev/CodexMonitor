@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { Dispatch, MutableRefObject } from "react";
+import type { TurnPlan } from "../../../types";
 import { interruptTurn as interruptTurnService } from "../../../services/tauri";
 import { getThreadTimestamp } from "../../../utils/threadItems";
 import {
@@ -12,7 +13,9 @@ import type { ThreadAction } from "./useThreadsReducer";
 
 type UseThreadTurnEventsOptions = {
   dispatch: Dispatch<ThreadAction>;
+  planByThreadRef: MutableRefObject<Record<string, TurnPlan | null>>;
   getCustomName: (workspaceId: string, threadId: string) => string | undefined;
+  isThreadHidden: (workspaceId: string, threadId: string) => boolean;
   markProcessing: (threadId: string, isProcessing: boolean) => void;
   markReviewing: (threadId: string, isReviewing: boolean) => void;
   setActiveTurnId: (threadId: string, turnId: string | null) => void;
@@ -24,7 +27,9 @@ type UseThreadTurnEventsOptions = {
 
 export function useThreadTurnEvents({
   dispatch,
+  planByThreadRef,
   getCustomName,
+  isThreadHidden,
   markProcessing,
   markReviewing,
   setActiveTurnId,
@@ -33,10 +38,21 @@ export function useThreadTurnEvents({
   safeMessageActivity,
   recordThreadActivity,
 }: UseThreadTurnEventsOptions) {
+  const shouldClearCompletedPlan = useCallback((threadId: string) => {
+    const plan = planByThreadRef.current[threadId];
+    if (!plan || plan.steps.length === 0) {
+      return false;
+    }
+    return plan.steps.every((step) => step.status === "completed");
+  }, [planByThreadRef]);
+
   const onThreadStarted = useCallback(
     (workspaceId: string, thread: Record<string, unknown>) => {
       const threadId = asString(thread.id);
       if (!threadId) {
+        return;
+      }
+      if (isThreadHidden(workspaceId, threadId)) {
         return;
       }
       dispatch({ type: "ensureThread", workspaceId, threadId });
@@ -60,7 +76,29 @@ export function useThreadTurnEvents({
       }
       safeMessageActivity();
     },
-    [dispatch, getCustomName, recordThreadActivity, safeMessageActivity],
+    [dispatch, getCustomName, isThreadHidden, recordThreadActivity, safeMessageActivity],
+  );
+
+  const onThreadNameUpdated = useCallback(
+    (
+      workspaceId: string,
+      payload: { threadId: string; threadName: string | null },
+    ) => {
+      const { threadId, threadName } = payload;
+      if (!threadId || !threadName) {
+        return;
+      }
+      if (getCustomName(workspaceId, threadId)) {
+        return;
+      }
+      dispatch({
+        type: "setThreadName",
+        workspaceId,
+        threadId,
+        name: threadName,
+      });
+    },
+    [dispatch, getCustomName],
   );
 
   const onTurnStarted = useCallback(
@@ -90,8 +128,17 @@ export function useThreadTurnEvents({
       markProcessing(threadId, false);
       setActiveTurnId(threadId, null);
       pendingInterruptsRef.current.delete(threadId);
+      if (shouldClearCompletedPlan(threadId)) {
+        dispatch({ type: "clearThreadPlan", threadId });
+      }
     },
-    [markProcessing, pendingInterruptsRef, setActiveTurnId],
+    [
+      dispatch,
+      markProcessing,
+      pendingInterruptsRef,
+      setActiveTurnId,
+      shouldClearCompletedPlan,
+    ],
   );
 
   const onTurnPlanUpdated = useCallback(
@@ -181,6 +228,7 @@ export function useThreadTurnEvents({
 
   return {
     onThreadStarted,
+    onThreadNameUpdated,
     onTurnStarted,
     onTurnCompleted,
     onTurnPlanUpdated,

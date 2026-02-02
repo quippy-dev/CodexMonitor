@@ -12,14 +12,14 @@ describe("threadReducer", () => {
     });
     const threads = next.threadsByWorkspace["ws-1"] ?? [];
     expect(threads).toHaveLength(1);
-    expect(threads[0].name).toBe("Agent 1");
+    expect(threads[0].name).toBe("New Agent");
     expect(next.activeThreadIdByWorkspace["ws-1"]).toBe("thread-1");
     expect(next.threadStatusById["thread-1"]?.isProcessing).toBe(false);
   });
 
   it("renames auto-generated thread on first user message", () => {
     const threads: ThreadSummary[] = [
-      { id: "thread-1", name: "Agent 1", updatedAt: 1 },
+      { id: "thread-1", name: "New Agent", updatedAt: 1 },
     ];
     const next = threadReducer(
       {
@@ -50,7 +50,7 @@ describe("threadReducer", () => {
 
   it("renames auto-generated thread from assistant output when no user message", () => {
     const threads: ThreadSummary[] = [
-      { id: "thread-1", name: "Agent 1", updatedAt: 1 },
+      { id: "thread-1", name: "New Agent", updatedAt: 1 },
     ];
     const next = threadReducer(
       {
@@ -263,6 +263,24 @@ describe("threadReducer", () => {
     expect(items[0]?.id).toBe("review-mode");
   });
 
+  it("creates and appends plan deltas when no plan tool item exists", () => {
+    const next = threadReducer(initialState, {
+      type: "appendPlanDelta",
+      threadId: "thread-1",
+      itemId: "plan-1",
+      delta: "- Step 1",
+    });
+    const items = next.itemsByThread["thread-1"] ?? [];
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: "plan-1",
+      kind: "tool",
+      toolType: "plan",
+      title: "Plan",
+      output: "- Step 1",
+    });
+  });
+
   it("appends reasoning summary and content when missing", () => {
     const withSummary = threadReducer(initialState, {
       type: "appendReasoningSummary",
@@ -404,5 +422,33 @@ describe("threadReducer", () => {
       workspaceId: "ws-1",
     });
     expect(removed.userInputRequests).toEqual([requestB]);
+  });
+
+  it("hides background threads and keeps them hidden on future syncs", () => {
+    const withThread = threadReducer(initialState, {
+      type: "ensureThread",
+      workspaceId: "ws-1",
+      threadId: "thread-bg",
+    });
+    expect(withThread.threadsByWorkspace["ws-1"]?.some((t) => t.id === "thread-bg")).toBe(true);
+
+    const hidden = threadReducer(withThread, {
+      type: "hideThread",
+      workspaceId: "ws-1",
+      threadId: "thread-bg",
+    });
+    expect(hidden.threadsByWorkspace["ws-1"]?.some((t) => t.id === "thread-bg")).toBe(false);
+
+    const synced = threadReducer(hidden, {
+      type: "setThreads",
+      workspaceId: "ws-1",
+      threads: [
+        { id: "thread-bg", name: "Agent 1", updatedAt: Date.now() },
+        { id: "thread-visible", name: "Agent 2", updatedAt: Date.now() },
+      ],
+    });
+    const ids = synced.threadsByWorkspace["ws-1"]?.map((t) => t.id) ?? [];
+    expect(ids).toContain("thread-visible");
+    expect(ids).not.toContain("thread-bg");
   });
 });

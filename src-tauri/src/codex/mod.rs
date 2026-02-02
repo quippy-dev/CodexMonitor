@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
@@ -14,6 +14,7 @@ pub(crate) mod config;
 pub(crate) mod home;
 
 pub(crate) use crate::backend::app_server::WorkspaceSession;
+use crate::backend::events::AppServerEvent;
 use crate::backend::app_server::{
     build_codex_command_with_bin, build_codex_path_env, check_codex_installation,
     spawn_workspace_session as spawn_workspace_session_inner,
@@ -265,6 +266,27 @@ pub(crate) async fn archive_thread(
 }
 
 #[tauri::command]
+pub(crate) async fn set_thread_name(
+    workspace_id: String,
+    thread_id: String,
+    name: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<Value, String> {
+    if remote_backend::is_remote_mode(&*state).await {
+        return remote_backend::call_remote(
+            &*state,
+            app,
+            "set_thread_name",
+            json!({ "workspaceId": workspace_id, "threadId": thread_id, "name": name }),
+        )
+        .await;
+    }
+
+    codex_core::set_thread_name_core(&state.sessions, workspace_id, thread_id, name).await
+}
+
+#[tauri::command]
 pub(crate) async fn send_user_message(
     workspace_id: String,
     thread_id: String,
@@ -461,8 +483,7 @@ pub(crate) async fn codex_login(
     }
 
     codex_core::codex_login_core(
-        &state.workspaces,
-        &state.app_settings,
+        &state.sessions,
         &state.codex_login_cancels,
         workspace_id,
     )
@@ -485,7 +506,8 @@ pub(crate) async fn codex_login_cancel(
         .await;
     }
 
-    codex_core::codex_login_cancel_core(&state.codex_login_cancels, workspace_id).await
+    codex_core::codex_login_cancel_core(&state.sessions, &state.codex_login_cancels, workspace_id)
+        .await
 }
 
 #[tauri::command]
@@ -505,6 +527,27 @@ pub(crate) async fn skills_list(
     }
 
     codex_core::skills_list_core(&state.sessions, workspace_id).await
+}
+
+#[tauri::command]
+pub(crate) async fn apps_list(
+    workspace_id: String,
+    cursor: Option<String>,
+    limit: Option<u32>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<Value, String> {
+    if remote_backend::is_remote_mode(&*state).await {
+        return remote_backend::call_remote(
+            &*state,
+            app,
+            "apps_list",
+            json!({ "workspaceId": workspace_id, "cursor": cursor, "limit": limit }),
+        )
+        .await;
+    }
+
+    codex_core::apps_list_core(&state.sessions, workspace_id, cursor, limit).await
 }
 
 #[tauri::command]
@@ -530,6 +573,16 @@ pub(crate) async fn respond_to_server_request(
         .await
 }
 
+fn build_commit_message_prompt(diff: &str) -> String {
+    format!(
+        "Generate a concise git commit message for the following changes. \
+Follow conventional commit format (e.g., feat:, fix:, refactor:, docs:, etc.). \
+Focus on the 'why' rather than the 'what'. Keep the summary line under 72 characters. \
+Only output the commit message, nothing else.\n\n\
+Changes:\n{diff}"
+    )
+}
+
 /// Gets the diff content for commit message generation
 #[tauri::command]
 pub(crate) async fn get_commit_message_prompt(
@@ -543,13 +596,7 @@ pub(crate) async fn get_commit_message_prompt(
         return Err("No changes to generate commit message for".to_string());
     }
 
-    let prompt = format!(
-        "Generate a concise git commit message for the following changes. \
-Follow conventional commit format (e.g., feat:, fix:, refactor:, docs:, etc.). \
-Focus on the 'why' rather than the 'what'. Keep the summary line under 72 characters. \
-Only output the commit message, nothing else.\n\n\
-Changes:\n{diff}"
-    );
+    let prompt = build_commit_message_prompt(&diff);
 
     Ok(prompt)
 }
@@ -587,6 +634,7 @@ pub(crate) async fn get_config_model(
 pub(crate) async fn generate_commit_message(
     workspace_id: String,
     state: State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<String, String> {
     // Get the diff from git
     let diff = crate::git::get_workspace_diff(&workspace_id, &state).await?;
@@ -595,13 +643,7 @@ pub(crate) async fn generate_commit_message(
         return Err("No changes to generate commit message for".to_string());
     }
 
-    let prompt = format!(
-        "Generate a concise git commit message for the following changes. \
-Follow conventional commit format (e.g., feat:, fix:, refactor:, docs:, etc.). \
-Focus on the 'why' rather than the 'what'. Keep the summary line under 72 characters. \
-Only output the commit message, nothing else.\n\n\
-Changes:\n{diff}"
-    );
+    let prompt = build_commit_message_prompt(&diff);
 
     // Get the session
     let session = {
@@ -638,6 +680,21 @@ Changes:\n{diff}"
         .and_then(|t| t.as_str())
         .ok_or_else(|| format!("Failed to get threadId from thread/start response: {:?}", thread_result))?
         .to_string();
+
+    // Hide background helper threads from the sidebar, even if a thread/started event leaked.
+    let _ = app.emit(
+        "app-server-event",
+        AppServerEvent {
+            workspace_id: workspace_id.clone(),
+            message: json!({
+                "method": "codex/backgroundThread",
+                "params": {
+                    "threadId": thread_id,
+                    "action": "hide"
+                }
+            }),
+        },
+    );
 
     // Create channel for receiving events
     let (tx, mut rx) = mpsc::unbounded_channel::<Value>();
@@ -821,6 +878,21 @@ Task:\n{cleaned_prompt}"
         .and_then(|t| t.as_str())
         .ok_or_else(|| format!("Failed to get threadId from thread/start response: {:?}", thread_result))?
         .to_string();
+
+    // Hide background helper threads from the sidebar, even if a thread/started event leaked.
+    let _ = app.emit(
+        "app-server-event",
+        AppServerEvent {
+            workspace_id: workspace_id.clone(),
+            message: json!({
+                "method": "codex/backgroundThread",
+                "params": {
+                    "threadId": thread_id,
+                    "action": "hide"
+                }
+            }),
+        },
+    );
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Value>();
     {

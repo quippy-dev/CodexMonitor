@@ -19,6 +19,7 @@ import { TabletNav } from "../../app/components/TabletNav";
 import { TerminalDock } from "../../terminal/components/TerminalDock";
 import { TerminalPanel } from "../../terminal/components/TerminalPanel";
 import type { ReviewPromptState, ReviewPromptStep } from "../../threads/hooks/useReviewPrompt";
+import type { WorkspaceLaunchScriptsState } from "../../app/hooks/useWorkspaceLaunchScripts";
 import type {
   AccessMode,
   ApprovalRequest,
@@ -28,6 +29,7 @@ import type {
   ComposerEditorSettings,
   CustomPromptOption,
   AccountSnapshot,
+  AppOption,
   DebugEntry,
   DictationSessionState,
   DictationTranscript,
@@ -101,6 +103,8 @@ type LayoutNodesOptions = {
   }>;
   hasWorkspaceGroups: boolean;
   deletingWorktreeIds: Set<string>;
+  newAgentDraftWorkspaceId?: string | null;
+  startingDraftThreadWorkspaceId?: string | null;
   threadsByWorkspace: Record<string, ThreadSummary[]>;
   threadParentById: Record<string, string>;
   threadStatusById: Record<string, ThreadActivityStatus>;
@@ -148,6 +152,7 @@ type LayoutNodesOptions = {
   onAddCloneAgent: (workspace: WorkspaceInfo) => Promise<void>;
   onToggleWorkspaceCollapse: (workspaceId: string, collapsed: boolean) => void;
   onSelectThread: (workspaceId: string, threadId: string) => void;
+  onOpenThreadLink: (threadId: string) => void;
   onDeleteThread: (workspaceId: string, threadId: string) => void;
   onSyncThread: (workspaceId: string, threadId: string) => void;
   pinThread: (workspaceId: string, threadId: string) => boolean;
@@ -213,6 +218,7 @@ type LayoutNodesOptions = {
   onCloseLaunchScriptEditor: () => void;
   onLaunchScriptDraftChange: (value: string) => void;
   onSaveLaunchScript: () => void;
+  launchScriptsState?: WorkspaceLaunchScriptsState;
   mainHeaderActionsNode?: ReactNode;
   centerMode: "chat" | "diff";
   onExitDiff: () => void;
@@ -387,9 +393,12 @@ type LayoutNodesOptions = {
   accessMode: AccessMode;
   onSelectAccessMode: (mode: AccessMode) => void;
   skills: SkillOption[];
+  appsEnabled: boolean;
+  apps: AppOption[];
   prompts: CustomPromptOption[];
   files: string[];
   onInsertComposerText: (text: string) => void;
+  canInsertComposerText: boolean;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   composerEditorSettings: ComposerEditorSettings;
   composerEditorExpanded: boolean;
@@ -458,6 +467,8 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       groupedWorkspaces={options.groupedWorkspaces}
       hasWorkspaceGroups={options.hasWorkspaceGroups}
       deletingWorktreeIds={options.deletingWorktreeIds}
+      newAgentDraftWorkspaceId={options.newAgentDraftWorkspaceId}
+      startingDraftThreadWorkspaceId={options.startingDraftThreadWorkspaceId}
       threadsByWorkspace={options.threadsByWorkspace}
       threadParentById={options.threadParentById}
       threadStatusById={options.threadStatusById}
@@ -516,11 +527,8 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       codeBlockCopyUseModifier={options.codeBlockCopyUseModifier}
       userInputRequests={options.userInputRequests}
       onUserInputSubmit={options.handleUserInputSubmit}
-      isThinking={
-        options.activeThreadId
-          ? options.threadStatusById[options.activeThreadId]?.isProcessing ?? false
-          : false
-      }
+      onOpenThreadLink={options.onOpenThreadLink}
+      isThinking={options.isProcessing}
       processingStartedAt={activeThreadStatus?.processingStartedAt ?? null}
       lastDurationMs={activeThreadStatus?.lastDurationMs ?? null}
     />
@@ -566,6 +574,8 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       accessMode={options.accessMode}
       onSelectAccessMode={options.onSelectAccessMode}
       skills={options.skills}
+      appsEnabled={options.appsEnabled}
+      apps={options.apps}
       prompts={options.prompts}
       files={options.files}
       textareaRef={options.textareaRef}
@@ -678,6 +688,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       onCloseLaunchScriptEditor={options.onCloseLaunchScriptEditor}
       onLaunchScriptDraftChange={options.onLaunchScriptDraftChange}
       onSaveLaunchScript={options.onSaveLaunchScript}
+      launchScriptsState={options.launchScriptsState}
       extraActionsNode={options.mainHeaderActionsNode}
     />
   ) : null;
@@ -719,6 +730,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         filePanelMode={options.filePanelMode}
         onFilePanelModeChange={options.onFilePanelModeChange}
         onInsertText={options.onInsertComposerText}
+        canInsertText={options.canInsertComposerText}
         openTargets={options.openAppTargets}
         openAppIconById={options.openAppIconById}
         selectedOpenAppId={options.selectedOpenAppId}

@@ -474,15 +474,28 @@ export async function getAccountInfo(workspaceId: string) {
 }
 
 export async function runCodexLogin(workspaceId: string) {
-  return invoke<{ output: string }>("codex_login", { workspaceId });
+  return invoke<{ loginId: string; authUrl: string; raw?: unknown }>("codex_login", {
+    workspaceId,
+  });
 }
 
 export async function cancelCodexLogin(workspaceId: string) {
-  return invoke<{ canceled: boolean }>("codex_login_cancel", { workspaceId });
+  return invoke<{ canceled: boolean; status?: string; raw?: unknown }>(
+    "codex_login_cancel",
+    { workspaceId },
+  );
 }
 
 export async function getSkillsList(workspaceId: string) {
   return invoke<any>("skills_list", { workspaceId });
+}
+
+export async function getAppsList(
+  workspaceId: string,
+  cursor?: string | null,
+  limit?: number | null,
+) {
+  return invoke<any>("apps_list", { workspaceId, cursor, limit });
 }
 
 export async function getPromptsList(workspaceId: string) {
@@ -727,6 +740,14 @@ export async function archiveThread(workspaceId: string, threadId: string) {
   return invoke<any>("archive_thread", { workspaceId, threadId });
 }
 
+export async function setThreadName(
+  workspaceId: string,
+  threadId: string,
+  name: string,
+) {
+  return invoke<any>("set_thread_name", { workspaceId, threadId, name });
+}
+
 export async function getCommitMessagePrompt(
   workspaceId: string,
 ): Promise<string> {
@@ -737,4 +758,51 @@ export async function generateCommitMessage(
   workspaceId: string,
 ): Promise<string> {
   return invoke("generate_commit_message", { workspaceId });
+}
+
+export async function sendNotification(
+  title: string,
+  body: string,
+): Promise<void> {
+  const macosDebugBuild = await invoke<boolean>("is_macos_debug_build").catch(
+    () => false,
+  );
+  const attemptFallback = async () => {
+    try {
+      await invoke("send_notification_fallback", { title, body });
+      return true;
+    } catch (error) {
+      console.warn("Notification fallback failed.", { error });
+      return false;
+    }
+  };
+
+  // In dev builds on macOS, the notification plugin can silently fail because
+  // the process is not a bundled app. Prefer the native AppleScript fallback.
+  if (macosDebugBuild) {
+    await attemptFallback();
+    return;
+  }
+
+  try {
+    const notification = await import("@tauri-apps/plugin-notification");
+    let permissionGranted = await notification.isPermissionGranted();
+    if (!permissionGranted) {
+      const permission = await notification.requestPermission();
+      permissionGranted = permission === "granted";
+      if (!permissionGranted) {
+        console.warn("Notification permission not granted.", { permission });
+        await attemptFallback();
+        return;
+      }
+    }
+    if (permissionGranted) {
+      await notification.sendNotification({ title, body });
+      return;
+    }
+  } catch (error) {
+    console.warn("Notification plugin failed.", { error });
+  }
+
+  await attemptFallback();
 }

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { TurnPlan } from "../../../types";
 import { interruptTurn } from "../../../services/tauri";
 import {
   normalizePlanUpdate,
@@ -23,11 +24,13 @@ vi.mock("../utils/threadNormalize", () => ({
 
 type SetupOverrides = {
   pendingInterrupts?: string[];
+  planByThread?: Record<string, TurnPlan | null>;
 };
 
 const makeOptions = (overrides: SetupOverrides = {}) => {
   const dispatch = vi.fn();
   const getCustomName = vi.fn();
+  const isThreadHidden = vi.fn(() => false);
   const markProcessing = vi.fn();
   const markReviewing = vi.fn();
   const setActiveTurnId = vi.fn();
@@ -37,11 +40,16 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
   const pendingInterruptsRef = {
     current: new Set(overrides.pendingInterrupts ?? []),
   };
+  const planByThreadRef = {
+    current: overrides.planByThread ?? {},
+  };
 
   const { result } = renderHook(() =>
     useThreadTurnEvents({
       dispatch,
+      planByThreadRef,
       getCustomName,
+      isThreadHidden,
       markProcessing,
       markReviewing,
       setActiveTurnId,
@@ -56,6 +64,7 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
     result,
     dispatch,
     getCustomName,
+    isThreadHidden,
     markProcessing,
     markReviewing,
     setActiveTurnId,
@@ -63,6 +72,7 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
     safeMessageActivity,
     recordThreadActivity,
     pendingInterruptsRef,
+    planByThreadRef,
   };
 };
 
@@ -134,6 +144,63 @@ describe("useThreadTurnEvents", () => {
     );
   });
 
+  it("ignores thread started events for hidden threads", () => {
+    const { result, dispatch, isThreadHidden, recordThreadActivity, safeMessageActivity } =
+      makeOptions();
+    isThreadHidden.mockReturnValue(true);
+
+    act(() => {
+      result.current.onThreadStarted("ws-1", {
+        id: "thread-hidden",
+        preview: "Hidden thread",
+        updatedAt: 1_700_000_000_200,
+      });
+    });
+
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(recordThreadActivity).not.toHaveBeenCalled();
+    expect(safeMessageActivity).not.toHaveBeenCalled();
+  });
+
+  it("applies thread name updates when no custom name exists", () => {
+    const { result, dispatch, getCustomName } = makeOptions();
+    getCustomName.mockReturnValue(undefined);
+
+    act(() => {
+      result.current.onThreadNameUpdated("ws-1", {
+        threadId: "thread-3",
+        threadName: "Server Rename",
+      });
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreadName",
+      workspaceId: "ws-1",
+      threadId: "thread-3",
+      name: "Server Rename",
+    });
+  });
+
+  it("does not override custom thread names on thread name updated", () => {
+    const { result, dispatch, getCustomName } = makeOptions();
+    getCustomName.mockReturnValue("Custom Name");
+
+    act(() => {
+      result.current.onThreadNameUpdated("ws-1", {
+        threadId: "thread-3",
+        threadName: "Server Rename",
+      });
+    });
+
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "setThreadName",
+        workspaceId: "ws-1",
+        threadId: "thread-3",
+      }),
+    );
+  });
+
   it("marks processing and active turn on turn started", () => {
     const { result, dispatch, markProcessing, setActiveTurnId } = makeOptions();
 
@@ -177,6 +244,95 @@ describe("useThreadTurnEvents", () => {
     expect(markProcessing).toHaveBeenCalledWith("thread-1", false);
     expect(setActiveTurnId).toHaveBeenCalledWith("thread-1", null);
     expect(pendingInterruptsRef.current.has("thread-1")).toBe(false);
+  });
+
+  it("clears the active plan when all plan steps are completed", () => {
+    const { result, dispatch } = makeOptions({
+      planByThread: {
+        "thread-1": {
+          turnId: "turn-1",
+          explanation: "Done",
+          steps: [{ step: "Finish task", status: "completed" }],
+        },
+      },
+    });
+
+    act(() => {
+      result.current.onTurnCompleted("ws-1", "thread-1", "turn-1");
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "clearThreadPlan",
+      threadId: "thread-1",
+    });
+  });
+
+  it("keeps the active plan when at least one step is not completed", () => {
+    const { result, dispatch } = makeOptions({
+      planByThread: {
+        "thread-1": {
+          turnId: "turn-1",
+          explanation: "Still working",
+          steps: [
+            { step: "Finish task", status: "completed" },
+            { step: "Verify output", status: "inProgress" },
+          ],
+        },
+      },
+    });
+
+    act(() => {
+      result.current.onTurnCompleted("ws-1", "thread-1", "turn-1");
+    });
+
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "clearThreadPlan",
+      threadId: "thread-1",
+    });
+  });
+
+  it("keeps onTurnCompleted stable while plan content changes", () => {
+    const dispatch = vi.fn();
+    const getCustomName = vi.fn();
+    const isThreadHidden = vi.fn(() => false);
+    const markProcessing = vi.fn();
+    const markReviewing = vi.fn();
+    const setActiveTurnId = vi.fn();
+    const pushThreadErrorMessage = vi.fn();
+    const safeMessageActivity = vi.fn();
+    const recordThreadActivity = vi.fn();
+    const pendingInterruptsRef = { current: new Set<string>() };
+    const planByThreadRef = {
+      current: {} as Record<string, TurnPlan | null>,
+    };
+
+    const { result, rerender } = renderHook(() =>
+      useThreadTurnEvents({
+        dispatch,
+        planByThreadRef,
+        getCustomName,
+        isThreadHidden,
+        markProcessing,
+        markReviewing,
+        setActiveTurnId,
+        pendingInterruptsRef,
+        pushThreadErrorMessage,
+        safeMessageActivity,
+        recordThreadActivity,
+      }),
+    );
+
+    const originalHandler = result.current.onTurnCompleted;
+    planByThreadRef.current = {
+      "thread-1": {
+        turnId: "turn-1",
+        explanation: "Updated",
+        steps: [{ step: "Done", status: "completed" }],
+      },
+    };
+    rerender();
+
+    expect(result.current.onTurnCompleted).toBe(originalHandler);
   });
 
   it("dispatches normalized plan updates", () => {

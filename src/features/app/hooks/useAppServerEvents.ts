@@ -23,6 +23,15 @@ type AgentCompleted = {
 type AppServerEventHandlers = {
   onWorkspaceConnected?: (workspaceId: string) => void;
   onThreadStarted?: (workspaceId: string, thread: Record<string, unknown>) => void;
+  onThreadNameUpdated?: (
+    workspaceId: string,
+    payload: { threadId: string; threadName: string | null },
+  ) => void;
+  onBackgroundThreadAction?: (
+    workspaceId: string,
+    threadId: string,
+    action: string,
+  ) => void;
   onApprovalRequest?: (request: ApprovalRequest) => void;
   onRequestUserInput?: (request: RequestUserInputRequest) => void;
   onAgentMessageDelta?: (event: AgentDelta) => void;
@@ -48,6 +57,7 @@ type AppServerEventHandlers = {
   onReasoningSummaryDelta?: (workspaceId: string, threadId: string, itemId: string, delta: string) => void;
   onReasoningSummaryBoundary?: (workspaceId: string, threadId: string, itemId: string) => void;
   onReasoningTextDelta?: (workspaceId: string, threadId: string, itemId: string, delta: string) => void;
+  onPlanDelta?: (workspaceId: string, threadId: string, itemId: string, delta: string) => void;
   onCommandOutputDelta?: (workspaceId: string, threadId: string, itemId: string, delta: string) => void;
   onTerminalInteraction?: (
     workspaceId: string,
@@ -65,6 +75,11 @@ type AppServerEventHandlers = {
   onAccountRateLimitsUpdated?: (
     workspaceId: string,
     rateLimits: Record<string, unknown>,
+  ) => void;
+  onAccountUpdated?: (workspaceId: string, authMode: string | null) => void;
+  onAccountLoginCompleted?: (
+    workspaceId: string,
+    payload: { loginId: string | null; success: boolean; error: string | null },
   ) => void;
 };
 
@@ -174,6 +189,30 @@ export function useAppServerEvents(handlers: AppServerEventHandlers) {
         return;
       }
 
+      if (method === "thread/name/updated") {
+        const params = message.params as Record<string, unknown>;
+        const threadId = String(params.threadId ?? params.thread_id ?? "").trim();
+        const threadNameRaw = params.threadName ?? params.thread_name ?? null;
+        const threadName =
+          typeof threadNameRaw === "string" && threadNameRaw.trim().length > 0
+            ? threadNameRaw.trim()
+            : null;
+        if (threadId) {
+          handlers.onThreadNameUpdated?.(workspace_id, { threadId, threadName });
+        }
+        return;
+      }
+
+      if (method === "codex/backgroundThread") {
+        const params = message.params as Record<string, unknown>;
+        const threadId = String(params.threadId ?? params.thread_id ?? "");
+        const action = String(params.action ?? "hide");
+        if (threadId) {
+          handlers.onBackgroundThreadAction?.(workspace_id, threadId, action);
+        }
+        return;
+      }
+
       if (method === "error") {
         const params = message.params as Record<string, unknown>;
         const threadId = String(params.threadId ?? params.thread_id ?? "");
@@ -259,6 +298,36 @@ export function useAppServerEvents(handlers: AppServerEventHandlers) {
         return;
       }
 
+      if (method === "account/updated") {
+        const params = message.params as Record<string, unknown>;
+        const authModeRaw = params.authMode ?? params.auth_mode ?? null;
+        const authMode =
+          typeof authModeRaw === "string" && authModeRaw.trim().length > 0
+            ? authModeRaw
+            : null;
+        handlers.onAccountUpdated?.(workspace_id, authMode);
+        return;
+      }
+
+      if (method === "account/login/completed") {
+        const params = message.params as Record<string, unknown>;
+        const loginIdRaw = params.loginId ?? params.login_id ?? null;
+        const loginId =
+          typeof loginIdRaw === "string" && loginIdRaw.trim().length > 0
+            ? loginIdRaw
+            : null;
+        const success = Boolean(params.success);
+        const errorRaw = params.error ?? null;
+        const error =
+          typeof errorRaw === "string" && errorRaw.trim().length > 0 ? errorRaw : null;
+        handlers.onAccountLoginCompleted?.(workspace_id, {
+          loginId,
+          success,
+          error,
+        });
+        return;
+      }
+
       if (method === "item/completed") {
         const params = message.params as Record<string, unknown>;
         const threadId = String(params.threadId ?? params.thread_id ?? "");
@@ -319,6 +388,17 @@ export function useAppServerEvents(handlers: AppServerEventHandlers) {
         const delta = String(params.delta ?? "");
         if (threadId && itemId && delta) {
           handlers.onReasoningTextDelta?.(workspace_id, threadId, itemId, delta);
+        }
+        return;
+      }
+
+      if (method === "item/plan/delta") {
+        const params = message.params as Record<string, unknown>;
+        const threadId = String(params.threadId ?? params.thread_id ?? "");
+        const itemId = String(params.itemId ?? params.item_id ?? "");
+        const delta = String(params.delta ?? "");
+        if (threadId && itemId && delta) {
+          handlers.onPlanDelta?.(workspace_id, threadId, itemId, delta);
         }
         return;
       }
